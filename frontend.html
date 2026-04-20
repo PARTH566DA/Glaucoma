@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OptiGuardAI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .drag-active { border-color: #3b82f6 !important; background-color: #eff6ff !important; }
+        .spinner { border: 3px solid rgba(59, 130, 246, 0.1); border-left-color: #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 selection:bg-blue-100">
+
+    <div class="w-full max-w-4xl mx-auto space-y-6">
+        
+        <!-- Header -->
+        <div class="text-center space-y-2">
+            <h1 class="text-3xl font-bold tracking-tight text-slate-800">Glaucoma Screening AI</h1>
+            <p class="text-slate-500 font-light">Upload a retinal fundus image for conservative screening advice.</p>
+        </div>
+
+        <!-- Main Upload Card -->
+        <div class="glass-panel p-8 rounded-2xl shadow-sm transition-all relative overflow-hidden group">
+            
+            <form id="uploadForm" class="space-y-6">
+                <!-- Drag and Drop Area -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center cursor-pointer transition-colors hover:bg-slate-50 relative">
+                    <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                    
+                    <div class="space-y-4 pointer-events-none" id="uploadPlaceholder">
+                        <svg class="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+                            <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <div class="text-sm text-slate-600">
+                            <span class="font-semibold text-blue-600">Click to upload</span> or drag and drop
+                        </div>
+                        <p class="text-xs text-slate-400">JPG, PNG or TIF</p>
+                        <p class="text-xs text-slate-400">Recommended: single-eye fundus image, centered optic disc, min 224x224 px.</p>
+                    </div>
+
+                    <!-- Image Preview -->
+                    <div id="imagePreviewContainer" class="hidden pointer-events-none">
+                        <img id="imagePreview" alt="Preview" class="h-40 mx-auto rounded shadow-sm object-cover">
+                        <p id="fileName" class="mt-2 text-sm text-slate-500 truncate"></p>
+                    </div>
+                </div>
+
+                <div class="flex justify-between items-center pt-2">
+                    <button type="button" id="clearBtn" class="text-sm text-slate-400 hover:text-slate-600 hidden transition-colors">Clear image</button>
+                    <button type="submit" id="analyzeBtn" disabled class="ml-auto flex items-center justify-center gap-2 bg-slate-800 text-white px-6 py-2.5 rounded-lg font-medium hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                        <span>Analyze Image</span>
+                        <div id="loader" class="spinner hidden mx-1 border-white border-opacity-30 border-left-white h-4 w-4"></div>
+                    </button>
+                </div>
+            </form>
+
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsContainer" class="glass-panel p-8 rounded-2xl shadow-sm hidden space-y-8 opacity-0 transition-opacity duration-500">
+            
+            <!-- Result Header -->
+            <div class="flex flex-col md:flex-row items-center justify-between border-b border-slate-100 pb-6 gap-4">
+                <div class="space-y-1 text-center md:text-left">
+                    <p class="text-sm text-slate-500 font-medium uppercase tracking-wider">AI Screening Advice</p>
+                    <h2 id="resultLabel" class="text-3xl font-bold"></h2>
+                    <p id="resultConfidence" class="text-slate-500"></p>
+                    <p id="resultMessage" class="text-sm text-slate-600"></p>
+                </div>
+                <!-- Warning badge if anomaly found -->
+                <div id="warningBadge" class="hidden items-center gap-2 bg-amber-50 text-amber-700 px-4 py-2 rounded-lg text-sm border border-amber-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <span id="warningText">Input warning</span>
+                </div>
+            </div>
+
+            <!-- Visual and Stats split -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+                
+                <!-- Annotated Image -->
+                <div class="space-y-3">
+                    <p class="text-sm font-semibold text-slate-700">Segmentation Mask</p>
+                    <div class="rounded-xl overflow-hidden shadow-sm border border-slate-200 bg-white">
+                        <img id="resultImage" class="w-full h-auto object-cover" alt="Annotated Result">
+                    </div>
+                </div>
+
+                <!-- Clinical Measurements -->
+                <div class="space-y-6">
+                    <div class="space-y-3">
+                        <p class="text-sm font-semibold text-slate-700">Clinical Measurements</p>
+                        
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                <p class="text-xs text-slate-400 font-medium uppercase mb-1">VCDR</p>
+                                <p id="valVCDR" class="text-xl font-semibold text-slate-800">--</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                <p class="text-xs text-slate-400 font-medium uppercase mb-1">ACDR</p>
+                                <p id="valACDR" class="text-xl font-semibold text-slate-800">--</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                <p class="text-xs text-slate-400 font-medium uppercase mb-1">HCDR</p>
+                                <p id="valHCDR" class="text-xl font-semibold text-slate-800">--</p>
+                            </div>
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                <p class="text-xs text-slate-400 font-medium uppercase mb-1">Model Engine</p>
+                                <p id="valModel" class="text-sm font-semibold text-slate-600 capitalize">--</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 text-blue-800 text-sm p-4 rounded-lg border border-blue-100">
+                        <p class="font-medium mb-1">Interpretation Guide</p>
+                        <p class="font-light text-blue-700 opacity-90">This tool is intentionally conservative: it reports NORMAL only when confidence is high and CDR ratios are comfortably low. Otherwise, it advises ophthalmologist follow-up.</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const fileName = document.getElementById('fileName');
+        const clearBtn = document.getElementById('clearBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const uploadForm = document.getElementById('uploadForm');
+        const loader = document.getElementById('loader');
+        
+        let selectedFile = null;
+
+        // Drag and File logic
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-active'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-active'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            if (dt.files && dt.files.length > 0) handleFile(dt.files[0]);
+        });
+
+        fileInput.addEventListener('change', function() {
+            if (this.files && this.files.length > 0) handleFile(this.files[0]);
+        });
+
+        function handleFile(file) {
+            selectedFile = file;
+            fileName.textContent = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                uploadPlaceholder.classList.add('hidden');
+                imagePreviewContainer.classList.remove('hidden');
+                clearBtn.classList.remove('hidden');
+                analyzeBtn.disabled = false;
+            }
+            reader.readAsDataURL(file);
+            document.getElementById('resultsContainer').classList.add('hidden');
+        }
+
+        clearBtn.addEventListener('click', () => {
+            selectedFile = null;
+            fileInput.value = '';
+            uploadPlaceholder.classList.remove('hidden');
+            imagePreviewContainer.classList.add('hidden');
+            clearBtn.classList.add('hidden');
+            analyzeBtn.disabled = true;
+        });
+
+        // Upload and API logic
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!selectedFile) return;
+
+            // UI State
+            analyzeBtn.disabled = true;
+            loader.classList.remove('hidden');
+            analyzeBtn.querySelector('span').textContent = "Processing...";
+            document.getElementById('resultsContainer').classList.add('hidden');
+            document.getElementById('resultsContainer').classList.remove('opacity-100');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    let detail = "Failed to process image.";
+                    try {
+                        const errData = await response.json();
+                        detail = errData.detail || detail;
+                    } catch (_) {
+                        // Keep default detail when response is not JSON.
+                    }
+                    throw new Error(detail);
+                }
+                const data = await response.json();
+                
+                displayResults(data);
+                
+            } catch (error) {
+                alert(error.message || "An error occurred during prediction.");
+            } finally {
+                // Restore UI
+                analyzeBtn.disabled = false;
+                loader.classList.add('hidden');
+                analyzeBtn.querySelector('span').textContent = "Analyze Image";
+            }
+        });
+
+        function displayResults(data) {
+            const container = document.getElementById('resultsContainer');
+            
+            // Label colors
+            const labelEl = document.getElementById('resultLabel');
+            const isNormal = data.prediction === "NORMAL";
+            labelEl.textContent = isNormal ? "NORMAL" : "CONSULT OPHTHALMOLOGIST";
+            if (data.prediction === "NORMAL") {
+                labelEl.className = "text-3xl font-bold text-emerald-600";
+            } else {
+                labelEl.className = "text-3xl font-bold text-amber-600";
+            }
+
+            document.getElementById('resultConfidence').textContent = isNormal
+                ? `Normal confidence: ${(data.confidence * 100).toFixed(1)}%`
+                : `Follow-up recommendation confidence: ${(data.confidence * 100).toFixed(1)}%`;
+            document.getElementById('resultMessage').textContent = data.patient_message || "";
+            
+            // Warnings
+            if ((data.warnings && data.warnings.length > 0) || data.anomaly_flag) {
+                const warningText = document.getElementById('warningText');
+                if (data.warnings && data.warnings.length > 0) {
+                    warningText.textContent = data.warnings.join(' | ');
+                } else {
+                    warningText.textContent = 'Input may be out-of-distribution; interpret with caution.';
+                }
+                document.getElementById('warningBadge').classList.remove('hidden');
+                document.getElementById('warningBadge').classList.add('flex');
+            } else {
+                document.getElementById('warningBadge').classList.add('hidden');
+                document.getElementById('warningBadge').classList.remove('flex');
+            }
+
+            // Mapped Stats
+            document.getElementById('valVCDR').textContent = data.features.VCDR.toFixed(3);
+            document.getElementById('valACDR').textContent = data.features.ACDR.toFixed(3);
+            document.getElementById('valHCDR').textContent = data.features.HCDR.toFixed(3);
+            document.getElementById('valModel').textContent = data.model_mode.replace('_', ' ');
+
+            // Annotated Image
+            document.getElementById('resultImage').src = `data:image/${data.annotated_image_format};base64,${data.annotated_image_base64}`;
+
+            // Show Container with fade in
+            container.classList.remove('hidden');
+            // small delay to allow display before transition
+            setTimeout(() => container.classList.add('opacity-100'), 50);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+The root cause is the shift in feature extraction (expert STAPLE masks vs OpenCV threshold).

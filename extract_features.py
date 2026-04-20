@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import os
+import argparse
 from typing import Dict, Optional, Tuple
 from data_loader import ChakshuDataLoader
 
@@ -266,43 +267,100 @@ class FeatureExtractor:
 
 def main():
     """Main function for feature extraction."""
+    parser = argparse.ArgumentParser(description="Extract glaucoma features for Chakshu dataset")
+    parser.add_argument(
+        "--base-path",
+        default="/Users/dau/Desktop/college/BTP/Dataset/Chakshu/20123135/",
+        help="Base dataset path"
+    )
+    parser.add_argument(
+        "--device",
+        default="Remidio",
+        choices=["Bosch", "Forus", "Remidio"],
+        help="Device to process"
+    )
+    parser.add_argument(
+        "--mask-type",
+        default="STAPLE",
+        choices=["STAPLE", "Mean", "Median", "Majority"],
+        help="Mask type"
+    )
+    parser.add_argument(
+        "--split",
+        default="both",
+        choices=["Train", "Test", "both"],
+        help="Dataset split to process"
+    )
+    parser.add_argument(
+        "--output-train",
+        default=None,
+        help="Output CSV for train features"
+    )
+    parser.add_argument(
+        "--output-test",
+        default=None,
+        help="Output CSV for test features"
+    )
+    parser.add_argument(
+        "--skip-compare",
+        action="store_true",
+        help="Skip comparison with reference CSV"
+    )
+    args = parser.parse_args()
+
     print("=" * 80)
     print("CHAKSHU FEATURE EXTRACTION")
     print("=" * 80)
     
     # Initialize extractor
-    extractor = FeatureExtractor()
-    
-    # Extract features for Remidio Train dataset
-    output_csv = os.path.join(extractor.base_path, "extracted_features_remidio_train.csv")
-    df = extractor.extract_all_features(
-        split="Train",
-        device="Remidio",
-        mask_type="STAPLE",
-        output_csv=output_csv
-    )
-    
-    print("\n" + "=" * 80)
-    print("SAMPLE OF EXTRACTED FEATURES")
-    print("=" * 80)
-    print(df.head(10).to_string())
-    
-    # Compare with reference CSV
-    reference_csv = os.path.join(
-        extractor.base_path,
-        "Train/6.0_Glaucoma_Decision/Majority/Remidio.csv"
-    )
-    
-    if os.path.exists(reference_csv):
-        comparison_df = extractor.compare_with_csv(df, reference_csv)
-    else:
-        print(f"\nWarning: Reference CSV not found at {reference_csv}")
-    
+    extractor = FeatureExtractor(base_path=args.base_path)
+
+    splits = ["Train", "Test"] if args.split == "both" else [args.split]
+    outputs = {}
+    counts = {}
+
+    for split in splits:
+        default_output = os.path.join(
+            extractor.base_path,
+            f"extracted_features_{args.device.lower()}_{split.lower()}.csv"
+        )
+        output_csv = (
+            args.output_train if split == "Train" and args.output_train
+            else args.output_test if split == "Test" and args.output_test
+            else default_output
+        )
+
+        df = extractor.extract_all_features(
+            split=split,
+            device=args.device,
+            mask_type=args.mask_type,
+            output_csv=output_csv
+        )
+        outputs[split] = output_csv
+        counts[split] = len(df)
+
+        print("\n" + "=" * 80)
+        print(f"SAMPLE OF EXTRACTED FEATURES ({split}/{args.device})")
+        print("=" * 80)
+        print(df.head(10).to_string())
+
+        if split == "Train" and not args.skip_compare:
+            reference_csv = os.path.join(
+                extractor.base_path,
+                f"Train/6.0_Glaucoma_Decision/Majority/{args.device}.csv"
+            )
+
+            if os.path.exists(reference_csv):
+                extractor.compare_with_csv(df, reference_csv)
+            else:
+                print(f"\nWarning: Reference CSV not found at {reference_csv}")
+
     print("\n" + "=" * 80)
     print("FEATURE EXTRACTION COMPLETE")
     print("=" * 80)
-    print(f"\nExtracted features saved to: {output_csv}")
-    print(f"Total images processed: {len(df)}")
+    for split in splits:
+        print(f"\n{split} features saved to: {outputs[split]}")
+        print(f"{split} images processed: {counts[split]}")
     print("\nYou can now use these features for:")
     print("  - Machine learning model training")
     print("  - Glaucoma risk analysis")
