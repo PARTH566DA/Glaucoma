@@ -89,7 +89,24 @@ unet_methods = """    def _load_unets(self) -> None:
             pred = model(img_tensor).squeeze().cpu().numpy()
             
         mask = (pred > 0.5).astype(np.uint8) * 255
+        
+        # Keep only the largest connected component to remove noise
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+        if num_labels > 1:
+            largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])
+            mask = (labels == largest_label).astype(np.uint8) * 255
+            
+            # Form a solid blob by filling any holes inside the mask
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if contours:
+                c = max(contours, key=cv2.contourArea)
+                mask = np.zeros_like(mask)
+                cv2.drawContours(mask, [c], -1, 255, thickness=cv2.FILLED)
+        
         mask_resized = cv2.resize(mask, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        mask_resized = cv2.GaussianBlur(mask_resized, (7, 7), 0)
+        _, mask_resized = cv2.threshold(mask_resized, 127, 255, cv2.THRESH_BINARY)
+        
         return mask_resized
 
     def preprocess_image"""
